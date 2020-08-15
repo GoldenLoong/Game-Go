@@ -3,4 +3,4 @@
 
 
 
-"原地址：https://github.com/picasso250/js-go"
+原地址：https://github.com/picasso250/js-go
