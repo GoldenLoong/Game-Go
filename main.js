@@ -36,7 +36,7 @@ var sgadd = function (x, y, color) {
     } else {
         // 寻找四个气，如同色，则寻找自己所在的区块
         // 最终找到所有的棋子块 stone group
-        var myGroups = findGroups(x, y, color)
+        var myGroups = findGroupsColor(x, y, color)
         // console.log("myGroups", myGroups)
         sgmerge(x, y, color, myGroups, findNeighborsColor(x, y, 0))
         // 这里不如把所有的气重新算一遍？？？
@@ -66,18 +66,22 @@ var sgmerge = function (x, y, color, indexs, qis) {
     var newQi = new Map()
     for (let idx of indexs) {
         ss = slmerge(ss, stoneGroups[idx].stones)
-        newQi = slmerge(newQi, stoneGroups[idx].qis)
+        // newQi = slmerge(newQi, stoneGroups[idx].qis)
     }
     ss.set(toI(x, y), { x: x, y: y })
-
-    // 这两个其实一点都没必要
-    newQi = slmergePoss(newQi, qis)
-    newQi.delete(toI(x, y))
 
     // now ss all together
     var newsgs = sgRemoveItems(indexs)
     newsgs.push({ color: color, stones: ss, qis: newQi })
     stoneGroups = newsgs
+
+    // 差分的更新气
+    var gs = findGroups(x, y)
+    for (let i of gs) {
+        stoneGroups[i] = sgUpdateQi(stoneGroups[i])
+    }
+    var i = sgget(x, y)
+    stoneGroups[i] = sgUpdateQi(stoneGroups[i])
 }
 
 var slmerge = function (a, b) {
@@ -105,17 +109,14 @@ var sgRemoveAllQiSelf = function (x, y) {
         stoneGroups[i].qis.delete(toI(x, y))
     }
 }
-// var slget = function (sl, x, y) {
-//     return sl[toI(x, y)]
-// }
-// var slhas = function (sl, x, y) {
-//     return (sl[toI(x, y)] === undefined)
-// }
-// var sladd = function (sl, x, y) {
-//     if (!slhas(sl, x, y)) {
-//         sl[toI(x, y)] = { x: x, y: y }
-//     }
-// }
+var boardClear = function () {
+    for (var i = 0; i < boardSize; i++) {
+        for (var j = 0; j < boardSize; j++) {
+            sset(i, j, 0)
+        }
+    }
+    stoneGroups = [];
+}
 var findNeighbors = function (x, y) {
     var ret = [];
     if (x - 1 >= 0) {
@@ -135,7 +136,19 @@ var findNeighbors = function (x, y) {
 var findNeighborsColor = function (x, y, color) {
     return findNeighbors(x, y).filter((v, i) => sget(v.x, v.y) == color)
 }
-var findGroups = function (x, y, color) {
+var findGroups = function (x, y) {
+    var poss = findNeighbors(x, y)
+    var ret = [];
+    for (let pos of poss) {
+        var i = sgget(pos.x, pos.y);
+        if (i == -1) continue;
+        if (ret.indexOf(i) == -1) {
+            ret.push(i)
+        }
+    }
+    return ret
+}
+var findGroupsColor = function (x, y, color) {
     var poss = findNeighborsColor(x, y, color)
     var ret = [];
     for (let pos of poss) {
@@ -153,18 +166,22 @@ var removeStonesOnBoard = function (stones) {
         sset(pos.x, pos.y, 0)
     }
 }
-var sgUpdateAllQi = function () {
-    for (let sg of stoneGroups) {
-        var stones = sg.stones
-        sg.qis = new Map()
-        for (let s of stones.values()) {
-            var n = findNeighborsColor(s.x, s.y, 0)
-            if (n.length > 0) {
-                for (let pos of n) {
-                    sg.qis.set(toI(pos.x, pos.y), pos)
-                }
+var sgUpdateQi = function (sg) {
+    var stones = sg.stones
+    sg.qis = new Map()
+    for (let s of stones.values()) {
+        var n = findNeighborsColor(s.x, s.y, 0)
+        if (n.length > 0) {
+            for (let pos of n) {
+                sg.qis.set(toI(pos.x, pos.y), pos)
             }
         }
+    }
+    return sg
+}
+var sgUpdateAllQi = function () {
+    for (let sg of stoneGroups) {
+        sgUpdateQi(sg)
     }
 }
 var makeMove = function (cursorPos, turn) {
@@ -175,16 +192,16 @@ var makeMove = function (cursorPos, turn) {
     sgadd(cursorPos.x, cursorPos.y, turn)
 
     // 重新计算所有的气
-    sgUpdateAllQi()
+    // sgUpdateAllQi()
 }
 var tizi = function (x, y, color) {
     // 首先检测周围的不同色棋子是否可以提
     // 如不可，则继续检测自身
-    var gs = findGroups(x, y, 3 - color)
+    var gs = findGroupsColor(x, y, 3 - color)
     var indexs = [];
     for (let i of gs) {
         var qis = stoneGroups[i].qis;
-        console.log(qis.values().length)
+        // console.log(qis.values().length)
         if (qis.size == 0) {
             indexs.push(i)
             removeStonesOnBoard(stoneGroups[i].stones.values())
@@ -195,7 +212,7 @@ var tizi = function (x, y, color) {
         sgUpdateAllQi()
     } else {
         // 自杀
-        var gs = findGroups(x, y, color)
+        var gs = findGroupsColor(x, y, color)
         if (gs.length > 0) {
             var i = gs[0];
             if (stoneGroups[i].qis.size == 0) {
@@ -217,6 +234,8 @@ var isAllColor = function (lst, color) {
     }
     return true;
 }
+
+// ==== 以下是画图函数 ====
 
 var drawBackground = function () {
     ctx.save();
@@ -313,6 +332,24 @@ var drawStone = function (x, y, color) {
 
     ctx.restore();
 }
+var drawStoneAbs = function (x, y, color) {
+    ctx.save()
+    ctx.beginPath();
+
+    var radius = stoneSize; // 圆弧半径
+    var startAngle = 0; // 开始点
+    var endAngle = 2 * Math.PI; // 结束点
+    var anticlockwise = false; // 顺时针或逆时针
+
+    ctx.arc(x, y, radius, startAngle, endAngle, anticlockwise);
+
+    ctx.strokeStyle = 'black'
+    ctx.stroke();
+    ctx.fillStyle = color == 1 ? 'black' : 'white'
+    ctx.fill();
+
+    ctx.restore();
+}
 
 _C.addEventListener("mousemove", function (event) {
     // console.log(event.x-beginPoint.x,event.y-beginPoint.y)
@@ -330,14 +367,12 @@ _C.addEventListener("click", function (event) {
     if (cursorPos.x < boardSize && cursorPos.y < boardSize) {
         // console.log("i,j", i, j)
         if (sget(cursorPos.x, cursorPos.y) == 0) {
+            oldsgs = stoneGroups
+
             console.log("doit", cursorPos.x, cursorPos.y, turn)
 
             makeMove(cursorPos, turn)
             console.log(stoneGroups)
-
-            var pu = "" + cursorPos.x + "," + cursorPos.y + " " + turn
-            console.log(pu)
-            _T.value += pu + "\r\n"
 
             // 提子
             // 首先检测周围的不同色棋子是否可以提
@@ -346,40 +381,65 @@ _C.addEventListener("click", function (event) {
                 // 禁着点
                 if (isAllColor(findNeighbors(cursorPos.x, cursorPos.y), 3 - turn)) {
                     sset(cursorPos.x, cursorPos.y, 0)
+                    stoneGroups = oldsgs
                     alert("禁着")
                     return;
                 }
+            } else {
+                // sgUpdateAllQi()
             }
+
+            var pu = "" + cursorPos.x + "," + cursorPos.y + " " + turn
+            console.log(pu)
+            _T.value += pu + "\r\n"
 
             turn = 3 - turn;
         }
     }
 })
+document.getElementsByTagName("body")[0].addEventListener("keyup", function (event) {
+    // console.log(event)
+    if (event.target == this && event.key == 'f') {
+        turn = 3 - turn;
+    }
+})
+_T.addEventListener("change", function (event) {
+    var v = _T.value
+    if (v.length > 0) {
+        if (v[v - 1] != '\n') _T.value += '\n';
+    }
+})
 var RePlay = document.getElementById("RePlay");
+var replay = function (pu) {
+    boardClear();
+    var z = pu.split(/\n|\r|\r\n/)
+    var i = 0;
+    for (let ins of z) {
+        i++;
+        ins = ins.trim()
+        if (ins.length > 0) {
+            var a = ins.split(" ")
+            var color = parseInt(a[1])
+            var aa = a[0].split(",")
+            var x = parseInt(aa[0]), y = parseInt(aa[1])
+            if (sget(x, y) != 0) {
+                alert("第" + i + "行 重复落子 " + ins)
+                break;
+            }
+            makeMove({ x: x, y: y }, color)
+            if (tizi(x, y, color))
+                sgUpdateAllQi()
+
+            turn = 3 - color;
+        }
+    }
+}
 RePlay.addEventListener("click", function (event) {
     if (confirm("确定要重现棋谱？棋盘将会清空")) {
-        boardClear();
-        var z = _T.value.split(/\n|\r|\r\n/)
-        for (let ins of z) {
-            if (ins.length > 0) {
-                var a = ins.split(" ")
-                var color = parseInt(a[1])
-                var aa = a[0].split(",")
-                makeMove({ x: parseInt(aa[0]), y: parseInt(aa[1]) }, color)
-                tizi(parseInt(aa[0]), parseInt(aa[1]), color)
-            }
-        }
+        replay(_T.value)
     }
 })
 
-var boardClear = function () {
-    for (var i = 0; i < boardSize; i++) {
-        for (var j = 0; j < boardSize; j++) {
-            sset(i, j, 0)
-        }
-    }
-    stoneGroups = [];
-}
 function init() {
     boardClear();
 }
@@ -403,7 +463,12 @@ function step(timestamp) {
             }
         }
     }
+
+    // 当前棋子颜色
+    drawStoneAbs((boardSize + 1) * gridSize, 1 * gridSize, turn);
+
     ctx.restore()
+
     window.requestAnimationFrame(step);
 }
 init();
